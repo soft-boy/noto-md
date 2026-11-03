@@ -1,0 +1,29 @@
+{
+  "name": "noto-md",
+  "version": "0.1.0",
+  "description": "A Notion-style browser editor for a folder of Markdown files",
+  "type": "module",
+  "bin": {
+    "notomd": "bin/notomd.js",
+    "noto-md": "bin/notomd.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "public"
+  ],
+  "scripts": {
+    "start": "node bin/notomd.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "markdown",
+    "editor",
+    "notion",
+    "cli"
+  ],
+  "license": "MIT"
+}
