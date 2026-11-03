@@ -1,12 +1,14 @@
 # noto-md
 
+[![npm](https://img.shields.io/npm/v/noto-md)](https://www.npmjs.com/package/noto-md)
+
 A Notion-style editor for a folder of Markdown files. Run one command and your
 `.md` files open in the browser as editable blocks: a page tree on the left and
 a block editor on the right. Every edit is written straight back to the file on
 disk.
 
 ```bash
-notomd ./my-notes
+npx noto-md ./my-notes
 ```
 
 - **No setup, no database.** Your files stay plain Markdown that you can still
@@ -20,22 +22,28 @@ notomd ./my-notes
 
 ## Install
 
-From this repository:
+Requires Node.js 20 or newer.
+
+Run it once without installing:
 
 ```bash
-npm install -g .
+npx noto-md ./my-notes
 ```
 
-Or without installing globally:
+Or install it globally to get the `notomd` command (`noto-md` works too):
 
 ```bash
-npx /path/to/noto-md ./my-notes
+npm install -g noto-md
 ```
 
-For development, link it once and edits to the source take effect immediately:
+```bash
+notomd ./my-notes
+```
+
+To update later:
 
 ```bash
-npm link
+npm update -g noto-md
 ```
 
 ## Usage
@@ -233,8 +241,17 @@ test/                node:test suite for the parser
 There is no build step. The browser loads the ES modules as they are.
 
 ```bash
+git clone <this repo> && cd noto-md
+npm link            # puts your local checkout on PATH as `notomd`
 npm test            # parser round-trip tests
 npm start -- ./docs # run against a folder
+```
+
+To publish a new version:
+
+```bash
+npm version patch   # or minor / major
+npm publish
 ```
 
 ## Limitations
