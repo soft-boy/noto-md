@@ -69,13 +69,19 @@ The server listens only on `127.0.0.1`. Press `Ctrl+C` to stop it.
 ### Sidebar
 
 - Shows every `.md` / `.markdown` file in the folder, nested by subfolder.
-  Folders that contain no Markdown are hidden, as are dot-folders (`.git`, …)
-  and `node_modules`.
-- Click a folder to expand it. Hover a folder and click **+** to create a page
+  Empty folders are shown too. Folders that contain only other kinds of files
+  are hidden, as are dot-folders (`.git`, …) and `node_modules`.
+- Click a folder to expand it.
+- The **New file** and **New folder** buttons next to *Pages* create one at the
+  top level. Type a name and press `Enter` (`Escape` cancels). For a page you
+  can type `folder/name` to put it in a folder (missing folders are created).
+- Hover a folder for the same two buttons, which create the page or folder
   inside it.
 - Hover a page and click the pencil to rename it.
-- **New page** creates a file at the top level. Type `folder/name` to create it
-  inside a folder (missing folders are created).
+- Hover a page or folder and click the trash can to delete it. You're asked to
+  confirm first. Deleting is permanent (it doesn't go to the system Trash), and
+  deleting a folder removes everything in it, including files that aren't
+  Markdown.
 - `⌘\` (`Ctrl+\`) hides or shows the sidebar.
 
 ### Page
@@ -218,7 +224,9 @@ noto-md is a local tool and is built to stay local:
   `Origin` isn't its own. This blocks other websites and DNS-rebinding
   attacks from reaching your files.
 - All file access is confined to the folder you opened, including through
-  symlinks, and only Markdown files can be written.
+  symlinks. Only Markdown files can be written or deleted (plus folders you
+  delete from the sidebar), and deleting a symlink removes the link, never what
+  it points to.
 - Markdown is rendered without executing anything. HTML blocks are previewed in
   a sandboxed frame with scripts disabled. Workspace files are served with a
   sandbox CSP, and the app itself runs under a strict Content-Security-Policy.
@@ -259,7 +267,8 @@ npm publish
 ## Limitations
 
 - Files are opened as UTF-8.
-- Deleting pages is left to your file manager or `git`, on purpose.
+- Deleted pages and folders can't be restored from noto-md. Use `git` or a
+  backup if you need them back.
 - Some Markdown is preserved but shown as plain text rather than rendered:
   reference-style links, footnotes, math, and list items spanning several
   paragraphs.

@@ -8,6 +8,8 @@ const ICONS = {
   chevron: '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   folder: '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5z" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>',
   page: '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 2h5l3 3v8.5a.5.5 0 0 1-.5.5h-7a.5.5 0 0 1-.5-.5z" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linejoin="round"/><path d="M9 2v3h3M6 8h4M6 10.5h4" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>',
+  newFile: '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7.5 14H3.5a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5h5l3 3v3.5M8.5 2v3h3" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linejoin="round"/><path d="M12 10v5M9.5 12.5h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  newFolder: '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7.5 13h-4A1.5 1.5 0 0 1 2 11.5v-7A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.5h5A1.5 1.5 0 0 1 14 6v2" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linejoin="round"/><path d="M12 10v5M9.5 12.5h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
   pencil: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 13l.6-2.6L10.5 3.5l2 2-6.9 6.9z" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linejoin="round"/></svg>',
 };
 
@@ -283,13 +285,16 @@ function renderNodes(nodes, depth) {
       return `<div class="tree-row dir${open ? ' open' : ''}" data-path="${p}" data-type="dir" style="--depth:${depth}" title="${p}">
         <span class="chev">${ICONS.chevron}</span><span class="tr-icon">${ICONS.folder}</span>
         <span class="tr-name">${escapeHtml(n.name)}</span>
-        <button class="tr-act" data-act="new" title="New page in ${escapeHtml(n.name)}">${IC.plus}</button>
+        <button class="tr-act" data-act="new-file" title="New file in ${escapeHtml(n.name)}">${ICONS.newFile}</button>
+        <button class="tr-act" data-act="new-folder" title="New folder in ${escapeHtml(n.name)}">${ICONS.newFolder}</button>
+        <button class="tr-act" data-act="delete" title="Delete folder">${IC.trash}</button>
       </div>${open ? renderNodes(n.children, depth + 1) : ''}`;
     }
     return `<a class="tree-row file${n.path === state.path ? ' active' : ''}" href="#/${escapeHtml(encodePath(n.path))}" data-path="${p}" data-type="file" style="--depth:${depth}" title="${p}">
       <span class="chev"></span><span class="tr-icon">${ICONS.page}</span>
       <span class="tr-name">${escapeHtml(titleOf(n.name))}</span>
       <button class="tr-act" data-act="rename" title="Rename">${ICONS.pencil}</button>
+      <button class="tr-act" data-act="delete" title="Delete page">${IC.trash}</button>
     </a>`;
   }).join('');
 }
@@ -311,7 +316,9 @@ $('#tree').addEventListener('click', (e) => {
   const act = e.target.closest('.tr-act');
   if (act) {
     e.preventDefault();
-    if (act.dataset.act === 'new') newPage(row.dataset.path);
+    if (act.dataset.act === 'new-file') addNew(row.dataset.path, 'page');
+    else if (act.dataset.act === 'new-folder') addNew(row.dataset.path, 'folder');
+    else if (act.dataset.act === 'delete') confirmDelete(row);
     else renameInTree(row.dataset.path);
     return;
   }
@@ -339,16 +346,17 @@ function pagePath(dir, input) {
 // Shows a text field in the sidebar. `place(row)` puts the row into the tree;
 // `submit(value)` resolves once done, or throws to keep the field open with
 // the error shown under it.
-function treeInput({ place, depth, value = '', placeholder, submit }) {
+function treeInput({ place, depth, icon = ICONS.page, value = '', placeholder, submit }) {
   $('.tree-input')?.remove();
+  $('.tree-confirm')?.remove();
   const row = document.createElement('div');
   row.className = 'tree-input';
   row.style.setProperty('--depth', depth);
-  row.innerHTML = `<span class="tr-icon">${ICONS.page}</span><input spellcheck="false" autocomplete="off"><div class="tree-error" hidden></div>`;
+  row.innerHTML = `<span class="tr-icon">${icon}</span><input spellcheck="false" autocomplete="off"><div class="tree-error" hidden></div>`;
   const input = row.querySelector('input');
   const error = row.querySelector('.tree-error');
-  input.value = value;
   input.placeholder = placeholder;
+  input.value = value;
   place(row);
   input.focus();
   input.select();
@@ -381,7 +389,7 @@ function treeInput({ place, depth, value = '', placeholder, submit }) {
   });
 }
 
-function newPage(dir = '') {
+function addNew(dir = '', kind = 'page') {
   if (document.body.classList.contains('sidebar-collapsed')) setSidebar(false);
   if (dir) {
     expandTo(`${dir}/x`);
@@ -390,7 +398,8 @@ function newPage(dir = '') {
   const dirRow = dir && [...document.querySelectorAll('#tree .tree-row.dir')].find((r) => r.dataset.path === dir);
   treeInput({
     depth: dir ? dir.split('/').length : 0,
-    placeholder: dir ? 'Page name' : 'Page name, or folder/name',
+    icon: kind === 'folder' ? ICONS.folder : ICONS.page,
+    placeholder: kind === 'folder' ? 'Folder name' : 'Page name, or folder/name',
     place: (row) => {
       if (dirRow) dirRow.after(row);
       else {
@@ -399,6 +408,15 @@ function newPage(dir = '') {
       }
     },
     submit: async (value) => {
+      if (kind === 'folder') {
+        const segs = value.split('/').map(cleanName).filter(Boolean);
+        if (!segs.length) throw new Error('Enter a name');
+        const path = [...(dir ? dir.split('/') : []), ...segs].join('/');
+        await api('/api/folders', { method: 'POST', body: JSON.stringify({ path }) });
+        expandTo(`${path}/x`);
+        await loadTree();
+        return;
+      }
       const path = pagePath(dir, value);
       if (!path) throw new Error('Enter a name');
       await api('/api/files', { method: 'POST', body: JSON.stringify({ path, content: '' }) });
@@ -407,6 +425,68 @@ function newPage(dir = '') {
       navigate(path);
     },
   });
+}
+
+// Asks in place of the row, since confirm() doesn't work in embedded browsers.
+function confirmDelete(row) {
+  $('.tree-input')?.remove();
+  $('.tree-confirm')?.remove();
+  const path = row.dataset.path;
+  const isDir = row.dataset.type === 'dir';
+  const box = document.createElement('div');
+  box.className = 'tree-confirm';
+  box.style.setProperty('--depth', row.style.getPropertyValue('--depth'));
+  const name = isDir ? baseName(path) : titleOf(path);
+  box.innerHTML = `<div class="tc-text">Delete ${isDir ? 'folder ' : ''}<b>${escapeHtml(name)}</b>${isDir ? ' and everything in it' : ''}? This can't be undone.</div>
+    <div class="tc-actions"><button type="button" class="tc-cancel">Cancel</button><button type="button" class="tc-delete">Delete</button></div>
+    <div class="tree-error" hidden></div>`;
+  row.after(box);
+  row.classList.add('pending-delete');
+  const close = () => { box.remove(); row.classList.remove('pending-delete'); };
+  const del = box.querySelector('.tc-delete');
+  box.querySelector('.tc-cancel').addEventListener('click', close);
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+  });
+  box.addEventListener('focusout', () => {
+    setTimeout(() => { if (box.isConnected && !box.contains(document.activeElement)) close(); }, 150);
+  });
+  del.addEventListener('click', async () => {
+    del.disabled = true;
+    try {
+      await deletePath(path, isDir);
+    } catch (err) {
+      const error = box.querySelector('.tree-error');
+      error.textContent = err.message;
+      error.hidden = false;
+      del.disabled = false;
+      del.focus();
+    }
+  });
+  del.focus();
+  box.scrollIntoView({ block: 'nearest' });
+}
+
+async function deletePath(path, isDir) {
+  const affectsOpen = state.path && (state.path === path || (isDir && state.path.startsWith(`${path}/`)));
+  if (affectsOpen) {
+    // Drop pending edits so autosave doesn't write the file back.
+    clearTimeout(state.timer);
+    if (state.saving) await state.saving;
+    state.dirty = false;
+  }
+  await api('/api/delete', { method: 'POST', body: JSON.stringify({ path }) });
+  if (isDir) {
+    for (const p of [...state.expanded]) if (p === path || p.startsWith(`${path}/`)) state.expanded.delete(p);
+    store.set('expanded', [...state.expanded]);
+  }
+  await loadTree();
+  if (affectsOpen) {
+    state.path = null;
+    history.replaceState(null, '', location.pathname);
+    hideBanner();
+    route();
+  }
 }
 
 // Renames a page in place (same folder). Throws if the server refuses.
@@ -679,8 +759,9 @@ function setSidebar(collapsed) {
 $('#collapse').addEventListener('click', () => setSidebar(true));
 $('#expand').addEventListener('click', () => setSidebar(false));
 $('#search-btn').addEventListener('click', openSearch);
-$('#new-page').addEventListener('click', () => newPage(''));
-$('#empty-new').addEventListener('click', () => newPage(''));
+$('#new-file').addEventListener('click', () => addNew('', 'page'));
+$('#new-folder').addEventListener('click', () => addNew('', 'folder'));
+$('#empty-new').addEventListener('click', () => addNew(''));
 $('#mode-toggle').addEventListener('click', toggleMode);
 source.addEventListener('input', () => {
   autosizeSource();

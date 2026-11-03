@@ -91,13 +91,16 @@ export async function startServer({ root, port = 4242, strictPort = false, host 
         const childRel = rel ? `${rel}/${e.name}` : e.name;
         if (e.isDirectory()) {
           const children = await walk(path.join(dir, e.name), childRel);
-          if (children.length) folders.push({ type: 'dir', name: e.name, path: childRel, children });
+          // Show folders with Markdown in them, and empty ones (e.g. just created).
+          if (children.length || children.empty) folders.push({ type: 'dir', name: e.name, path: childRel, children });
         } else if (MD_EXT.test(e.name) && (e.isFile() || e.isSymbolicLink())) {
           files.push({ type: 'file', name: e.name, path: childRel });
         }
       }
       const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
-      return [...folders.sort(byName), ...files.sort(byName)];
+      const nodes = [...folders.sort(byName), ...files.sort(byName)];
+      nodes.empty = !entries.some((e) => !isIgnored(e.name));
+      return nodes;
     }
     return walk(root, '');
   }
@@ -166,6 +169,12 @@ export async function startServer({ root, port = 4242, strictPort = false, host 
 
   function requireMarkdown(rel) {
     if (!MD_EXT.test(rel)) throw new HttpError(400, 'Only Markdown files can be edited');
+  }
+
+  // Only paths the sidebar shows can be created as folders or deleted.
+  function requireVisible(rel) {
+    if (typeof rel !== 'string' || !rel.replace(/^\/+/, '')) throw new HttpError(400, 'Invalid path');
+    if (rel.split('/').some((seg) => seg === '..' || (seg && isIgnored(seg)))) throw new HttpError(400, 'Invalid path');
   }
 
   async function serveFile(res, abs, headers = {}) {
@@ -258,6 +267,31 @@ export async function startServer({ root, port = 4242, strictPort = false, host 
       }
       broadcast({ type: 'tree' });
       return json(res, 201, { path: rel, mtime: (await fsp.stat(abs)).mtimeMs });
+    }
+    if (p === '/api/folders' && req.method === 'POST') {
+      const { path: rel } = await readJson(req);
+      requireVisible(rel);
+      const abs = await resolve(rel, { mustExist: false });
+      if (fs.existsSync(abs)) throw new HttpError(409, 'Something with that name already exists');
+      await fsp.mkdir(abs, { recursive: true });
+      broadcast({ type: 'tree' });
+      return json(res, 201, { path: rel });
+    }
+    if (p === '/api/delete' && req.method === 'POST') {
+      const { path: rel } = await readJson(req);
+      requireVisible(rel);
+      const abs = await resolve(rel);
+      if (abs === root) throw new HttpError(403, "Can't delete the workspace");
+      // lstat so a symlink is removed itself, never what it points to.
+      const st = await fsp.lstat(abs);
+      if (st.isDirectory()) {
+        await fsp.rm(abs, { recursive: true });
+      } else {
+        requireMarkdown(rel);
+        await fsp.unlink(abs);
+      }
+      broadcast({ type: 'tree' });
+      return json(res, 200, { path: rel });
     }
     if (p === '/api/rename' && req.method === 'POST') {
       const { from, to } = await readJson(req);
