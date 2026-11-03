@@ -312,7 +312,7 @@ $('#tree').addEventListener('click', (e) => {
   if (act) {
     e.preventDefault();
     if (act.dataset.act === 'new') newPage(row.dataset.path);
-    else renamePrompt(row.dataset.path);
+    else renameInTree(row.dataset.path);
     return;
   }
   if (row.dataset.type === 'dir') {
@@ -327,45 +327,120 @@ $('#tree').addEventListener('click', (e) => {
 
 const cleanName = (s) => s.trim().replace(/[\\/:*?"<>|]/g, '-').replace(/^\.+/, '');
 
-async function newPage(dir = '') {
-  const name = prompt(dir ? `New page in ${dir}/` : 'New page name');
-  if (!name || !cleanName(name)) return;
-  const file = MD_EXT.test(cleanName(name)) ? cleanName(name) : `${cleanName(name)}.md`;
-  const path = dir ? `${dir}/${file}` : file;
-  try {
-    await api('/api/files', { method: 'POST', body: JSON.stringify({ path, content: '' }) });
-  } catch (err) {
-    alert(err.message);
-    return;
-  }
-  await loadTree();
-  navigate(path);
+// "a/b/Page" -> "a/b/Page.md"; each segment is cleaned and ".." is not allowed.
+function pagePath(dir, input) {
+  const segs = input.split('/').map(cleanName).filter(Boolean);
+  if (!segs.length) return null;
+  const last = segs.length - 1;
+  if (!MD_EXT.test(segs[last])) segs[last] += '.md';
+  return [...(dir ? dir.split('/') : []), ...segs].join('/');
 }
 
+// Shows a text field in the sidebar. `place(row)` puts the row into the tree;
+// `submit(value)` resolves once done, or throws to keep the field open with
+// the error shown under it.
+function treeInput({ place, depth, value = '', placeholder, submit }) {
+  $('.tree-input')?.remove();
+  const row = document.createElement('div');
+  row.className = 'tree-input';
+  row.style.setProperty('--depth', depth);
+  row.innerHTML = `<span class="tr-icon">${ICONS.page}</span><input spellcheck="false" autocomplete="off"><div class="tree-error" hidden></div>`;
+  const input = row.querySelector('input');
+  const error = row.querySelector('.tree-error');
+  input.value = value;
+  input.placeholder = placeholder;
+  place(row);
+  input.focus();
+  input.select();
+  row.scrollIntoView({ block: 'nearest' });
+  let busy = false;
+  const close = () => row.remove();
+  input.addEventListener('keydown', async (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+    } else if (e.key === 'Enter' && !e.isComposing && !busy) {
+      e.preventDefault();
+      if (!input.value.trim()) return close();
+      busy = true;
+      try {
+        await submit(input.value);
+        close();
+      } catch (err) {
+        error.textContent = err.message;
+        error.hidden = false;
+        input.focus();
+      }
+      busy = false;
+    }
+  });
+  input.addEventListener('input', () => { error.hidden = true; });
+  input.addEventListener('blur', () => {
+    // Let a click on the error text or a pending submit finish first.
+    setTimeout(() => { if (!busy && !row.contains(document.activeElement)) close(); }, 150);
+  });
+}
+
+function newPage(dir = '') {
+  if (document.body.classList.contains('sidebar-collapsed')) setSidebar(false);
+  if (dir) {
+    expandTo(`${dir}/x`);
+    renderTree();
+  }
+  const dirRow = dir && [...document.querySelectorAll('#tree .tree-row.dir')].find((r) => r.dataset.path === dir);
+  treeInput({
+    depth: dir ? dir.split('/').length : 0,
+    placeholder: dir ? 'Page name' : 'Page name, or folder/name',
+    place: (row) => {
+      if (dirRow) dirRow.after(row);
+      else {
+        $('.tree-empty')?.remove();
+        $('#tree').prepend(row);
+      }
+    },
+    submit: async (value) => {
+      const path = pagePath(dir, value);
+      if (!path) throw new Error('Enter a name');
+      await api('/api/files', { method: 'POST', body: JSON.stringify({ path, content: '' }) });
+      expandTo(path);
+      await loadTree();
+      navigate(path);
+    },
+  });
+}
+
+// Renames a page in place (same folder). Throws if the server refuses.
 async function renamePage(from, newTitle) {
   const name = cleanName(newTitle);
-  if (!name) return false;
+  if (!name) throw new Error('Enter a name');
   const to = joinPath(dirOf(from), MD_EXT.test(name) ? name : name + extOf(from));
-  if (to === from) return true;
+  if (to === from) return;
   if (from === state.path) await flushSave();
-  try {
-    await api('/api/rename', { method: 'POST', body: JSON.stringify({ from, to }) });
-  } catch (err) {
-    alert(err.message);
-    return false;
-  }
+  await api('/api/rename', { method: 'POST', body: JSON.stringify({ from, to }) });
   if (from === state.path) {
     state.path = to;
     history.replaceState(null, '', `#/${encodePath(to)}`);
     renderHeader();
   }
   await loadTree();
-  return true;
 }
 
-function renamePrompt(path) {
-  const name = prompt('Rename page', titleOf(path));
-  if (name != null) renamePage(path, name);
+function renameInTree(path) {
+  const fileRow = [...document.querySelectorAll('#tree .tree-row.file')].find((r) => r.dataset.path === path);
+  if (!fileRow) return;
+  treeInput({
+    depth: Number(fileRow.style.getPropertyValue('--depth')) || 0,
+    value: titleOf(path),
+    placeholder: 'Page name',
+    place: (row) => {
+      fileRow.after(row);
+      fileRow.hidden = true;
+      new MutationObserver((_, obs) => {
+        if (!row.isConnected) { fileRow.hidden = false; obs.disconnect(); }
+      }).observe(row.parentNode, { childList: true });
+    },
+    submit: (value) => renamePage(path, value),
+  });
 }
 
 function navigate(path, anchor) {
@@ -477,7 +552,12 @@ title.addEventListener('blur', async () => {
   if (!state.path) return;
   const text = title.textContent.trim();
   if (text === titleOf(state.path)) return;
-  if (!(await renamePage(state.path, text))) title.textContent = titleOf(state.path);
+  try {
+    await renamePage(state.path, text);
+  } catch (err) {
+    title.textContent = titleOf(state.path);
+    showBanner(`Couldn't rename: ${err.message}`, [['OK', hideBanner]]);
+  }
 });
 
 // ---- search ----------------------------------------------------------------
