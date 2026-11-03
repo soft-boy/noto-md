@@ -11,6 +11,8 @@ disk.
 npx noto-md ./my-notes
 ```
 
+![noto-md showing a folder of agent definitions: the page tree on the left, and a page with its front matter rendered as Properties on the right](docs/screenshot.png)
+
 - **No setup, no database.** Your files stay plain Markdown that you can still
   edit with any other tool and commit to git.
 - **Doesn't reformat your files.** noto-md only rewrites the blocks you change.
